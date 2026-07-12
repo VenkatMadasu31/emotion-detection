@@ -1,0 +1,54 @@
+# ==========================
+# Python Cache
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ==========================
+# Virtual Environment
+# ==========================
+venv/
+.venv/
+env/
+ENV/
+
+# ==========================
+# Environment Variables
+# ==========================
+.env
+
+# ==========================
+# Large Dataset (DO NOT PUSH)
+# ==========================
+landmarks_dataset/
+
+# ==========================
+# Python Generated Files
+# ==========================
+.pytest_cache/
+.coverage
+*.log
+
+# ==========================
+# IDE Files
+# ==========================
+.vscode/
+.idea/
+
+# ==========================
+# Operating System Files
+# ==========================
+Thumbs.db
+.DS_Store
+
+# ==========================
+# Jupyter
+# ==========================
+.ipynb_checkpoints/
+
+# ==========================
+# Build Files
+# ==========================
+build/
+dist/

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Emotion Detection</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<h1>Live Human Emotion Detection</h1>
+
+<div class="main">
+
+    <!-- LEFT SIDE -->
+    <div class="left-panel">
+
+        <div class="camera-card">
+            <div class="camera-row">
+
+                <!-- LIVE CAMERA -->
+                <div class="camera">
+                    <h3>Live Camera</h3>
+
+                    <video
+                        id="camera"
+                        autoplay
+                        playsinline
+                        muted>
+                    </video>
+                </div>
+
+                <!-- DIVIDER -->
+                <div class="camera-divider"></div>
+
+                <!-- FACE MESH -->
+                <div class="camera">
+                    <h3>Face Mesh</h3>
+
+                    <canvas id="meshCanvas"></canvas>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="emotion-section">
+
+            <h2 id="liveEmotion">
+                Emotion : Detecting...
+            </h2>
+
+            <h3 class="timeline-heading">Emotion Timeline</h3>
+
+            <div id="timeline"></div>
+
+            <button id="downloadBtn">
+                Download Emotion Timeline
+            </button>
+
+        </div>
+
+    </div>
+
+    <!-- RIGHT SIDE -->
+    <div class="stats">
+
+        <h3>Emotion Stats</h3>
+
+        <div class="bars">
+
+            <div class="bar">
+                <label>Happy</label>
+                <div class="progress"><div id="happy"></div></div>
+            </div>
+
+            <div class="bar">
+                <label>Sad</label>
+                <div class="progress"><div id="sad"></div></div>
+            </div>
+
+            <div class="bar">
+                <label>Angry</label>
+                <div class="progress"><div id="angry"></div></div>
+            </div>
+
+            <div class="bar">
+                <label>Surprise</label>
+                <div class="progress"><div id="surprise"></div></div>
+            </div>
+
+            <div class="bar">
+                <label>Neutral</label>
+                <div class="progress"><div id="neutral"></div></div>
+            </div>
+
+            <div class="bar">
+                <label>Fear</label>
+                <div class="progress"><div id="fear"></div></div>
+            </div>
+
+            <div class="bar">
+                <label>Disgust</label>
+                <div class="progress"><div id="disgust"></div></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+<script>
+
+const video = document.getElementById("camera")
+
+const canvas = document.getElementById("meshCanvas")
+const ctx = canvas.getContext("2d")
+
+const captureCanvas = document.createElement("canvas")
+const captureCtx = captureCanvas.getContext("2d")
+
+
+// ====================================================
+// FACE MESH CONNECTION DATA (MediaPipe indices)
+// ====================================================
+
+const FACE_OVAL_CONNS = [
+    [10,338],[338,297],[297,332],[332,284],[284,251],[251,389],[389,356],[356,454],
+    [454,323],[323,361],[361,288],[288,397],[397,365],[365,379],[379,378],[378,400],
+    [400,377],[377,152],[152,148],[148,176],[176,149],[149,150],[150,136],[136,172],
+    [172,58],[58,132],[132,93],[93,234],[234,127],[127,162],[162,21],[21,54],
+    [54,103],[103,67],[67,109],[109,10]
+];
+
+const LEFT_EYE_CONNS = [
+    [263,249],[249,390],[390,373],[373,374],[374,380],[380,381],[381,382],[382,362],
+    [263,466],[466,388],[388,387],[387,386],[386,385],[385,384],[384,398],[398,362]
+];
+
+const RIGHT_EYE_CONNS = [
+    [33,7],[7,163],[163,144],[144,145],[145,153],[153,154],[154,155],[155,133],
+    [33,246],[246,161],[161,160],[160,159],[159,158],[158,157],[157,173],[173,133]
+];
+
+const LEFT_EYEBROW_CONNS = [
+    [276,283],[283,282],[282,295],[295,285],
+    [300,293],[293,334],[334,296],[296,336]
+];
+
+const RIGHT_EYEBROW_CONNS = [
+    [46,53],[53,52],[52,65],[65,55],
+    [70,63],[63,105],[105,66],[66,107]
+];
+
+const LIPS_CONNS = [
+    [61,146],[146,91],[91,181],[181,84],[84,17],[17,314],[314,405],[405,321],[321,375],[375,291],
+    [61,185],[185,40],[40,39],[39,37],[37,0],[0,267],[267,269],[269,270],[270,409],[409,291],
+    [78,95],[95,88],[88,178],[178,87],[87,14],[14,317],[317,402],[402,318],[318,324],[324,308],
+    [78,191],[191,80],[80,81],[81,82],[82,13],[13,312],[312,311],[311,310],[310,415],[415,308]
+];
+
+const LEFT_IRIS_CONNS = [[474,475],[475,476],[476,477],[477,474]];
+const RIGHT_IRIS_CONNS = [[469,470],[470,471],[471,472],[472,469]];
+
+
+// ====================================================
+// START CAMERA
+// ====================================================
+
+async function startCamera(){
+
+    try{
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+
+            console.error("WebRTC not supported")
+
+            alert("WebRTC not supported in this browser")
+
+            return
+        }
+
+        const stream =
+            await navigator.mediaDevices.getUserMedia({
+                video:true
+        })
+
+        video.srcObject = stream
+
+        // ADD THIS BLOCK
+        video.onloadedmetadata = () => {
+
+            canvas.width = video.videoWidth
+            canvas.height = video.videoHeight
+
+        }
+
+    }catch(error){
+
+        console.error(error)
+
+        alert("Camera access denied.")
+
+    }
+
+}
+
+
+// ====================================================
+// DRAW MESH CONNECTIONS HELPER
+// ====================================================
+
+function drawMeshConnections(points, connections, color, lineWidth, scaleX, scaleY){
+    ctx.strokeStyle = color
+    ctx.lineWidth = lineWidth
+    ctx.beginPath()
+    for(let i = 0; i < connections.length; i++){
+        const conn = connections[i]
+        const startIdx = Array.isArray(conn) ? conn[0] : conn.start
+        const endIdx = Array.isArray(conn) ? conn[1] : conn.end
+        if(startIdx < points.length && endIdx < points.length){
+            const s = points[startIdx]
+            const e = points[endIdx]
+            ctx.moveTo(s.x * scaleX, s.y * scaleY)
+            ctx.lineTo(e.x * scaleX, e.y * scaleY)
+        }
+    }
+    ctx.stroke()
+}
+
+
+// ====================================================
+// DRAW LANDMARKS
+// ====================================================
+
+function drawLandmarks(points){
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    )
+
+    ctx.drawImage(
+        video,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    )
+
+    const scaleX =
+        canvas.width / video.videoWidth
+
+    const scaleY =
+        canvas.height / video.videoHeight
+
+    // Draw full tessellation (triangulation) from CDN
+    if(window.FACEMESH_TESSELATION){
+        drawMeshConnections(points, window.FACEMESH_TESSELATION, "rgba(192,192,192,0.15)", 0.5, scaleX, scaleY)
+    }
+
+    // Draw face oval
+    drawMeshConnections(points, FACE_OVAL_CONNS, "rgba(200,200,200,0.5)", 1, scaleX, scaleY)
+
+    // Draw eyebrows
+    drawMeshConnections(points, LEFT_EYEBROW_CONNS, "rgba(0,255,156,0.5)", 1, scaleX, scaleY)
+    drawMeshConnections(points, RIGHT_EYEBROW_CONNS, "rgba(0,255,156,0.5)", 1, scaleX, scaleY)
+
+    // Draw eyes
+    drawMeshConnections(points, LEFT_EYE_CONNS, "rgba(0,255,255,0.7)", 1, scaleX, scaleY)
+    drawMeshConnections(points, RIGHT_EYE_CONNS, "rgba(0,255,255,0.7)", 1, scaleX, scaleY)
+
+    // Draw lips
+    drawMeshConnections(points, LIPS_CONNS, "rgba(255,100,100,0.7)", 1, scaleX, scaleY)
+
+    // Draw iris (if landmarks 468+ are available)
+    if(points.length > 468){
+        drawMeshConnections(points, LEFT_IRIS_CONNS, "rgba(0,255,200,0.8)", 1.5, scaleX, scaleY)
+        drawMeshConnections(points, RIGHT_IRIS_CONNS, "rgba(0,255,200,0.8)", 1.5, scaleX, scaleY)
+    }
+
+    // Draw landmark dots
+    ctx.fillStyle = "#00ff9c"
+
+    points.forEach(point=>{
+
+        ctx.beginPath()
+
+        ctx.arc(
+            point.x * scaleX,
+            point.y * scaleY,
+            1,
+            0,
+            Math.PI * 2
+        )
+
+        ctx.fill()
+
+    })
+
+}
+
+
+// ====================================================
+// SEND FRAME
+// ====================================================
+
+async function sendFrame(){
+
+    if(video.videoWidth === 0){
+        return
+    }
+
+    captureCanvas.width = video.videoWidth
+    captureCanvas.height = video.videoHeight
+
+    captureCtx.drawImage(
+        video,
+        0,
+        0
+    )
+
+    const image =
+        captureCanvas.toDataURL(
+            "image/png",
+        )
+
+    try{
+
+        const response =
+            await fetch("/predict",{
+
+                method:"POST",
+
+                headers:{
+                    "Content-Type":"application/json"
+                },
+
+                body:JSON.stringify({
+                    image:image
+                })
+
+            })
+
+        const data =
+            await response.json()
+
+        if(data.landmarks){
+
+
+            drawLandmarks(
+                data.landmarks
+            )
+
+        }
+
+        document.getElementById(
+            "liveEmotion"
+        ).innerText =
+        `Emotion : ${data.emotion} (${data.confidence}%)`
+
+    }catch(error){
+
+        console.error(error)
+
+    }
+
+}
+
+
+// ====================================================
+// STATS
+// ====================================================
+
+function updateStats(){
+
+fetch('/emotion_stats')
+.then(res=>res.json())
+.then(data=>{
+
+for(let emotion in data){
+
+let bar =
+document.getElementById(emotion)
+
+if(bar){
+
+bar.style.width =
+data[emotion]+"%"
+
+bar.textContent =
+data[emotion]+"%"
+
+}
+
+}
+
+})
+
+}
+
+
+// ====================================================
+// TIMELINE
+// ====================================================
+
+function updateTimeline(){
+
+fetch('/emotion_timeline')
+.then(res=>res.json())
+.then(data=>{
+
+let html=""
+
+data.forEach(item=>{
+
+html +=
+`<div class="timeline-item">
+${item.range} → ${item.emotion}
+</div>`
+
+})
+
+document.getElementById(
+"timeline"
+).innerHTML = html
+
+})
+
+}
+
+
+// ====================================================
+// DOWNLOAD
+// ====================================================
+
+document.getElementById(
+"downloadBtn"
+).onclick=function(){
+
+let timeline =
+document.getElementById(
+"timeline"
+).innerText
+
+let blob =
+new Blob(
+[timeline],
+{type:"text/plain"}
+)
+
+let link =
+document.createElement("a")
+
+link.href =
+URL.createObjectURL(blob)
+
+link.download =
+"emotion_timeline.txt"
+
+link.click()
+
+}
+
+
+// ====================================================
+// START
+// ====================================================
+
+startCamera()
+
+setInterval(
+    sendFrame,
+    500
+)
+
+setInterval(
+    updateStats,
+    10000
+)
+
+setInterval(
+    updateTimeline,
+    10000
+)
+
+</script>
+
+</body>
+</html>
